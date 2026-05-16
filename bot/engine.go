@@ -74,7 +74,6 @@ func NewEngine(client *exchange.Client) *Engine {
 
 func (e *Engine) SetStrategy(name string) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	switch name {
 	case "RSI_MA":
 		e.strategy = NewRSIMAStrategy(DefaultRSIMAConfig())
@@ -86,6 +85,7 @@ func (e *Engine) SetStrategy(name string) {
 		e.strategy = NewRSIMAStrategy(DefaultRSIMAConfig())
 	}
 	config.Get().Strategy = name
+	e.mu.Unlock()
 	e.log(fmt.Sprintf("Strategy switched to %s", name), "info")
 }
 
@@ -111,26 +111,29 @@ func (e *Engine) Start() error {
 
 func (e *Engine) Stop() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.cancelFn != nil {
 		e.cancelFn()
 	}
 	e.state = StateStopped
+	e.mu.Unlock()
 	e.log("Bot stopped", "warn")
 }
 
 func (e *Engine) Pause() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.state = StatePaused
+	e.mu.Unlock()
 	e.log("Bot paused", "warn")
 }
 
 func (e *Engine) Resume() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.state == StatePaused {
+	resumed := e.state == StatePaused
+	if resumed {
 		e.state = StateRunning
+	}
+	e.mu.Unlock()
+	if resumed {
 		e.log("Bot resumed", "info")
 	}
 }
