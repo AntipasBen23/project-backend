@@ -164,6 +164,10 @@ func (c *Client) GetAccountInfo() (*AccountInfo, error) {
 		return nil, err
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("binance HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
 	var info AccountInfo
 	if err := json.Unmarshal(body, &info); err != nil {
 		return nil, err

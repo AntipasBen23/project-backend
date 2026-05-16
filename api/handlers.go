@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -87,6 +88,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/backtest", cors(s.handleBacktest))
 	mux.HandleFunc("/api/settings", cors(s.handleSettings))
 	mux.HandleFunc("/api/connectivity", cors(s.handleConnectivity))
+	mux.HandleFunc("/api/candles", cors(s.handleCandles))
 	mux.Handle("/ws", websocket.Handler(s.handleWS))
 }
 
@@ -268,6 +270,27 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (s *Server) handleCandles(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		symbol = config.Get().TradingPair
+	}
+	interval := r.URL.Query().Get("interval")
+	if interval == "" {
+		interval = "1m"
+	}
+	limit := 100
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+	candles, err := s.client.GetCandles(symbol, interval, limit)
+	if err != nil {
+		writeError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, candles)
 }
 
 func (s *Server) handleConnectivity(w http.ResponseWriter, r *http.Request) {

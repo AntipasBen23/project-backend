@@ -106,6 +106,7 @@ func (e *Engine) Start() error {
 
 	e.log("Bot started", "info")
 	go e.runLoop(ctx)
+	go e.tick()
 	return nil
 }
 
