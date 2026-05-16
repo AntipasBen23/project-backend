@@ -63,7 +63,7 @@ func (c *Client) GetCandles(symbol, interval string, limit int) ([]Candle, error
 
 	resp, err := c.httpClient.Get(endpoint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("klines request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -72,9 +72,13 @@ func (c *Client) GetCandles(symbol, interval string, limit int) ([]Candle, error
 		return nil, err
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("binance klines HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
 	var raw [][]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("klines parse error (body: %.200s): %w", string(body), err)
 	}
 
 	candles := make([]Candle, 0, len(raw))

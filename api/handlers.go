@@ -309,7 +309,14 @@ func (s *Server) handleCandles(w http.ResponseWriter, r *http.Request) {
 	}
 	candles, err := s.client.GetCandles(symbol, interval, limit)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("handleCandles error: %v", err)
+		// Fall back to engine's cached candles if the live fetch fails
+		cached := s.engine.GetLastCandles()
+		if len(cached) > 0 {
+			writeJSON(w, cached)
+			return
+		}
+		writeError(w, "candles unavailable: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	writeJSON(w, candles)

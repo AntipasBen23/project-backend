@@ -391,6 +391,12 @@ func (e *Engine) GetOpenTrade() *Trade {
 	return e.openTrade
 }
 
+func (e *Engine) GetLastCandles() []exchange.Candle {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.LastCandles
+}
+
 func (e *Engine) getPnLSnapshot() map[string]interface{} {
 	total := e.winCount + e.lossCount
 	winRate := 0.0
