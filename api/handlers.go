@@ -51,6 +51,14 @@ func (h *Hub) broadcast(event string, data interface{}) {
 	}
 }
 
+func (h *Hub) sendTo(ws *websocket.Conn, event string, data interface{}) {
+	msg, _ := json.Marshal(map[string]interface{}{
+		"event": event,
+		"data":  data,
+	})
+	websocket.Message.Send(ws, string(msg))
+}
+
 type Server struct {
 	engine  *bot.Engine
 	client  *exchange.Client
@@ -96,15 +104,29 @@ func (s *Server) handleWS(ws *websocket.Conn) {
 	s.hub.add(ws)
 	defer s.hub.remove(ws)
 
-	// Send initial state
-	s.hub.broadcast("status", s.engine.GetStatus())
-	s.hub.broadcast("pnl", s.engine.GetPnL())
-	for _, log := range s.engine.GetBrainLogs() {
-		s.hub.broadcast("brain_log", log)
+	// Send initial state to this client only
+	cfg := config.Get()
+	s.hub.sendTo(ws, "status", s.engine.GetStatus())
+	s.hub.sendTo(ws, "pnl", s.engine.GetPnL())
+	for _, entry := range s.engine.GetBrainLogs() {
+		s.hub.sendTo(ws, "brain_log", entry)
 	}
 	for _, trade := range s.engine.GetTrades() {
-		s.hub.broadcast("trade_closed", trade)
+		s.hub.sendTo(ws, "trade_closed", trade)
 	}
+
+	// Always push current candles so the chart populates immediately
+	go func() {
+		candles, err := s.client.GetCandles(cfg.TradingPair, "1m", 100)
+		if err == nil && len(candles) > 0 {
+			price := candles[len(candles)-1].Close
+			s.hub.sendTo(ws, "price", map[string]interface{}{
+				"pair":    cfg.TradingPair,
+				"price":   price,
+				"candles": candles,
+			})
+		}
+	}()
 
 	// Keep alive — read until disconnect
 	buf := make([]byte, 512)
