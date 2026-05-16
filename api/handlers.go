@@ -97,6 +97,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/settings", cors(s.handleSettings))
 	mux.HandleFunc("/api/connectivity", cors(s.handleConnectivity))
 	mux.HandleFunc("/api/candles", cors(s.handleCandles))
+	mux.HandleFunc("/api/orders", cors(s.handleOrders))
 	mux.Handle("/ws", websocket.Handler(s.handleWS))
 }
 
@@ -320,6 +321,19 @@ func (s *Server) handleCandles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, candles)
+}
+
+func (s *Server) handleOrders(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		symbol = config.Get().TradingPair
+	}
+	orders, err := s.client.GetOrderHistory(symbol, 20)
+	if err != nil {
+		writeError(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, orders)
 }
 
 func (s *Server) handleConnectivity(w http.ResponseWriter, r *http.Request) {

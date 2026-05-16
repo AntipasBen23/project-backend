@@ -234,11 +234,107 @@ func (c *Client) PlaceMarketOrder(symbol, side string, quantity float64) (*Order
 		return nil, err
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("binance order HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
 	var result OrderResult
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
+}
+
+type OrderHistoryEntry struct {
+	Symbol      string  `json:"symbol"`
+	OrderID     int64   `json:"orderId"`
+	Side        string  `json:"side"`
+	Type        string  `json:"type"`
+	Status      string  `json:"status"`
+	Price       float64 `json:"price"`
+	OrigQty     float64 `json:"origQty"`
+	ExecutedQty float64 `json:"executedQty"`
+	QuoteQty    float64 `json:"quoteQty"`
+	Time        int64   `json:"time"`
+}
+
+func (c *Client) GetOrderHistory(symbol string, limit int) ([]OrderHistoryEntry, error) {
+	cfg := config.Get()
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("no API key configured")
+	}
+
+	params := url.Values{}
+	params.Set("symbol", symbol)
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("timestamp", strconv.FormatInt(time.Now().UnixMilli(), 10))
+	params.Set("recvWindow", "5000")
+
+	sig := sign(params.Encode(), cfg.APISecret)
+	params.Set("signature", sig)
+
+	req, err := http.NewRequest("GET",
+		fmt.Sprintf("%s/api/v3/allOrders?%s", cfg.BaseURL, params.Encode()), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-MBX-APIKEY", cfg.APIKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("binance allOrders HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var raw []struct {
+		Symbol      string `json:"symbol"`
+		OrderID     int64  `json:"orderId"`
+		Side        string `json:"side"`
+		Type        string `json:"type"`
+		Status      string `json:"status"`
+		Price       string `json:"price"`
+		OrigQty     string `json:"origQty"`
+		ExecutedQty string `json:"executedQty"`
+		QuoteQty    string `json:"cummulativeQuoteQty"`
+		Time        int64  `json:"time"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+
+	entries := make([]OrderHistoryEntry, 0, len(raw))
+	for _, r := range raw {
+		price, _ := strconv.ParseFloat(r.Price, 64)
+		origQty, _ := strconv.ParseFloat(r.OrigQty, 64)
+		execQty, _ := strconv.ParseFloat(r.ExecutedQty, 64)
+		quoteQty, _ := strconv.ParseFloat(r.QuoteQty, 64)
+		entries = append(entries, OrderHistoryEntry{
+			Symbol:      r.Symbol,
+			OrderID:     r.OrderID,
+			Side:        r.Side,
+			Type:        r.Type,
+			Status:      r.Status,
+			Price:       price,
+			OrigQty:     origQty,
+			ExecutedQty: execQty,
+			QuoteQty:    quoteQty,
+			Time:        r.Time,
+		})
+	}
+	// Most recent first
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+		entries[i], entries[j] = entries[j], entries[i]
+	}
+	return entries, nil
 }
 
 func (c *Client) TestConnectivity() error {
