@@ -249,19 +249,33 @@ func (e *Engine) tick() {
 		e.BroadcastFn("indicators", indicators)
 	}
 
+	// Log indicator snapshot every tick so Bot Brain shows the bot is alive
+	if rsi, ok := indicators["rsi"]; ok {
+		signalLabel := "NONE"
+		if signal == SignalBuy {
+			signalLabel = "BUY"
+		} else if signal == SignalSell {
+			signalLabel = "SELL"
+		}
+		e.log(fmt.Sprintf("RSI %.1f | MA9 $%.2f | MA21 $%.2f → %s",
+			rsi, indicators["shortMA"], indicators["longMA"], signalLabel), "info")
+	}
+
 	switch signal {
 	case SignalBuy:
-		e.log(fmt.Sprintf("BUY signal fired — placing order for %.4f %s", cfg.TradeSize, cfg.TradingPair), "buy")
-		trade, err := e.orderMgr.PlaceBuy(cfg.TradingPair, strategy.Name(), cfg.TradeSize)
-		if err != nil {
-			e.log(fmt.Sprintf("Order failed: %v", err), "warn")
+		e.log(fmt.Sprintf("BUY signal fired — placing order for %.4f %s at $%.2f", cfg.TradeSize, cfg.TradingPair, price), "buy")
+		trade, orderErr := e.orderMgr.PlaceBuy(cfg.TradingPair, strategy.Name(), cfg.TradeSize)
+		if orderErr != nil {
+			e.log(fmt.Sprintf("Binance order error (trade simulated at market): %v", orderErr), "warn")
+		}
+		if trade == nil {
 			return
 		}
 		e.mu.Lock()
 		e.openTrade = trade
 		e.mu.Unlock()
-		e.log(fmt.Sprintf("Order filled at $%.2f. Stop loss set at $%.2f (-%.1f%%)",
-			trade.EntryPrice, trade.EntryPrice*(1-cfg.StopLoss/100), cfg.StopLoss), "buy")
+		e.log(fmt.Sprintf("Trade opened at $%.2f. SL $%.2f | TP $%.2f",
+			trade.EntryPrice, trade.EntryPrice*(1-cfg.StopLoss/100), trade.EntryPrice*(1+cfg.TakeProfit/100)), "buy")
 		if e.BroadcastFn != nil {
 			e.BroadcastFn("trade", trade)
 		}

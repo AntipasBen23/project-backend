@@ -45,17 +45,17 @@ func (s *RSIMAStrategy) Compute(candles []exchange.Candle) (signal Signal, indic
 	longMA := computeSMA(closes, s.Config.LongMA)
 
 	indicators = map[string]float64{
-		"rsi":       rsi,
-		"shortMA":   shortMA,
-		"longMA":    longMA,
+		"rsi":     rsi,
+		"shortMA": shortMA,
+		"longMA":  longMA,
 	}
 
-	// BUY: MA9 above MA21 (uptrend) and RSI not yet overbought
-	if shortMA > longMA && rsi < 55 {
+	// RSI dips into oversold territory → buy the dip
+	if rsi < 40 {
 		return SignalBuy, indicators
 	}
-	// SELL: MA9 below MA21 (downtrend) and RSI not yet oversold
-	if shortMA < longMA && rsi > 45 {
+	// RSI rises into overbought territory → exit signal
+	if rsi > 60 {
 		return SignalSell, indicators
 	}
 	return SignalNone, indicators

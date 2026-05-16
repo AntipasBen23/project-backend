@@ -32,20 +32,21 @@ func NewOrderManager(client *exchange.Client) *OrderManager {
 }
 
 func (o *OrderManager) PlaceBuy(pair, strategy string, quantity float64) (*Trade, error) {
+	price := 0.0
+	var orderErr error
+
 	result, err := o.client.PlaceMarketOrder(pair, "BUY", quantity)
 	if err != nil {
-		return nil, fmt.Errorf("buy order failed: %w", err)
-	}
-
-	price := 0.0
-	if result.Price != "" {
+		orderErr = err
+	} else if result.Price != "" {
 		price, _ = strconv.ParseFloat(result.Price, 64)
 	}
+
+	// Always fall back to live market price so the trade is always created
 	if price == 0 {
-		// Market order: get current price
 		price, err = o.client.GetCurrentPrice(pair)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("buy order failed and cannot get price: %w", err)
 		}
 	}
 
@@ -60,7 +61,7 @@ func (o *OrderManager) PlaceBuy(pair, strategy string, quantity float64) (*Trade
 		Status:     "OPEN",
 		Timestamp:  time.Now(),
 	}
-	return trade, nil
+	return trade, orderErr
 }
 
 func (o *OrderManager) PlaceSell(trade *Trade, reason string) error {
