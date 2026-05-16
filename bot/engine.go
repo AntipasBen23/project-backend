@@ -39,24 +39,25 @@ type BrainLog struct {
 }
 
 type Engine struct {
-	mu           sync.RWMutex
-	state        State
-	strategy     Strategy
-	riskMgr      *RiskManager
-	orderMgr     *OrderManager
-	client       *exchange.Client
-	openTrade    *Trade
-	trades       []*Trade
-	brainLogs    []BrainLog
-	totalPnL     float64
-	winCount     int
-	lossCount    int
-	startTime    time.Time
-	cancelFn     context.CancelFunc
-	BroadcastFn  func(event string, data interface{})
-	LastCandles  []exchange.Candle
-	LastPrice    float64
-	Indicators   map[string]float64
+	mu              sync.RWMutex
+	state           State
+	strategy        Strategy
+	riskMgr         *RiskManager
+	orderMgr        *OrderManager
+	client          *exchange.Client
+	openTrade       *Trade
+	trades          []*Trade
+	brainLogs       []BrainLog
+	totalPnL        float64
+	winCount        int
+	lossCount       int
+	startTime       time.Time
+	cancelFn        context.CancelFunc
+	forceBuyOnStart bool
+	BroadcastFn     func(event string, data interface{})
+	LastCandles     []exchange.Candle
+	LastPrice       float64
+	Indicators      map[string]float64
 }
 
 func NewEngine(client *exchange.Client) *Engine {
@@ -100,6 +101,7 @@ func (e *Engine) Start() error {
 	}
 	e.state = StateRunning
 	e.startTime = time.Now()
+	e.forceBuyOnStart = true
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancelFn = cancel
 	e.mu.Unlock()
@@ -243,6 +245,13 @@ func (e *Engine) tick() {
 	signal, indicators := strategy.Compute(candles)
 	e.mu.Lock()
 	e.Indicators = indicators
+	forced := e.forceBuyOnStart
+	if forced {
+		e.forceBuyOnStart = false
+		if signal == SignalNone {
+			signal = SignalBuy
+		}
+	}
 	e.mu.Unlock()
 
 	if e.BroadcastFn != nil {
@@ -253,7 +262,11 @@ func (e *Engine) tick() {
 	if rsi, ok := indicators["rsi"]; ok {
 		signalLabel := "NONE"
 		if signal == SignalBuy {
-			signalLabel = "BUY"
+			if forced {
+				signalLabel = "BUY (start)"
+			} else {
+				signalLabel = "BUY"
+			}
 		} else if signal == SignalSell {
 			signalLabel = "SELL"
 		}
