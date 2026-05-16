@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/AntipasBen23/project-backend/api"
 	"github.com/AntipasBen23/project-backend/bot"
@@ -10,6 +11,11 @@ import (
 )
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	client := exchange.NewClient()
 	engine := bot.NewEngine(client)
 	engine.SetStrategy("RSI_MA")
@@ -18,8 +24,8 @@ func main() {
 	mux := http.NewServeMux()
 	server.RegisterRoutes(mux)
 
-	log.Println("TradeBot backend starting on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	log.Printf("AIEdge Swing backend starting on :%s", port)
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
