@@ -1,8 +1,12 @@
 package backtest
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/AntipasBen23/project-backend/bot"
@@ -74,15 +78,13 @@ func (e *Engine) Run(cfg Config) (*Result, error) {
 		return nil, fmt.Errorf("invalid end date: %w", err)
 	}
 
-	candles, err := e.client.GetHistoricalCandles(
-		cfg.Symbol, cfg.Interval,
-		start.UnixMilli(), end.UnixMilli(),
-	)
+	// Use Binance mainnet public API for historical data (no API key required)
+	candles, err := fetchPublicHistoricalCandles(cfg.Symbol, cfg.Interval, start.UnixMilli(), end.UnixMilli())
 	if err != nil || len(candles) == 0 {
-		// Fall back to recent candles for demo
+		// Fall back to testnet recent candles
 		candles, err = e.client.GetCandles(cfg.Symbol, cfg.Interval, 500)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not fetch candles: %w", err)
 		}
 	}
 
@@ -215,6 +217,54 @@ func (e *Engine) Run(cfg Config) (*Result, error) {
 		EquityCurve: equity,
 		Trades:      trades,
 	}, nil
+}
+
+func fetchPublicHistoricalCandles(symbol, interval string, startMs, endMs int64) ([]exchange.Candle, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	var all []exchange.Candle
+	current := startMs
+
+	for current < endMs {
+		url := fmt.Sprintf(
+			"https://api.binance.com/api/v3/klines?symbol=%s&interval=%s&limit=1000&startTime=%d&endTime=%d",
+			symbol, interval, current, endMs,
+		)
+		resp, err := client.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("binance mainnet HTTP %d", resp.StatusCode)
+		}
+
+		var raw [][]interface{}
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, err
+		}
+		if len(raw) == 0 {
+			break
+		}
+
+		for _, r := range raw {
+			c := exchange.Candle{
+				OpenTime:  int64(r[0].(float64)),
+				CloseTime: int64(r[6].(float64)),
+			}
+			c.Open, _ = strconv.ParseFloat(r[1].(string), 64)
+			c.High, _ = strconv.ParseFloat(r[2].(string), 64)
+			c.Low, _ = strconv.ParseFloat(r[3].(string), 64)
+			c.Close, _ = strconv.ParseFloat(r[4].(string), 64)
+			c.Volume, _ = strconv.ParseFloat(r[5].(string), 64)
+			all = append(all, c)
+		}
+		current = int64(raw[len(raw)-1][6].(float64)) + 1
+	}
+	return all, nil
 }
 
 func buildStrategy(name string) bot.Strategy {
