@@ -57,10 +57,11 @@ func (s *RSIMAStrategy) Compute(candles []exchange.Candle) (signal Signal, indic
 	crossedAbove := prevShortMA <= prevLongMA && shortMA > longMA
 	crossedBelow := prevShortMA >= prevLongMA && shortMA < longMA
 
-	if rsi < s.Config.RSIOversold && crossedAbove {
+	// Fire on MA crossover confirmed by RSI direction (not waiting for extreme levels)
+	if crossedAbove && rsi < 55 {
 		return SignalBuy, indicators
 	}
-	if rsi > s.Config.RSIOverbought && crossedBelow {
+	if crossedBelow && rsi > 45 {
 		return SignalSell, indicators
 	}
 	return SignalNone, indicators
