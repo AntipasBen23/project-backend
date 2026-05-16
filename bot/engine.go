@@ -195,10 +195,11 @@ func (e *Engine) tick() {
 
 	if e.BroadcastFn != nil {
 		e.BroadcastFn("price", map[string]interface{}{
-			"pair":  cfg.TradingPair,
-			"price": price,
+			"pair":    cfg.TradingPair,
+			"price":   price,
 			"candles": candles,
 		})
+		e.BroadcastFn("status", e.GetStatus())
 	}
 
 	e.mu.RLock()

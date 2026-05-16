@@ -12,7 +12,7 @@ type BollingerConfig struct {
 }
 
 func DefaultBollingerConfig() BollingerConfig {
-	return BollingerConfig{Period: 20, StdDevMult: 2.0}
+	return BollingerConfig{Period: 20, StdDevMult: 1.0}
 }
 
 type BollingerStrategy struct {
