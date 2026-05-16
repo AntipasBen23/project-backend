@@ -139,6 +139,10 @@ func (c *Client) GetHistoricalCandles(symbol, interval string, startTime, endTim
 
 func (c *Client) GetAccountInfo() (*AccountInfo, error) {
 	cfg := config.Get()
+	if cfg.APIKey == "" {
+		return nil, fmt.Errorf("no API key configured")
+	}
+
 	params := url.Values{}
 	params.Set("timestamp", strconv.FormatInt(time.Now().UnixMilli(), 10))
 	params.Set("recvWindow", "5000")
@@ -168,11 +172,29 @@ func (c *Client) GetAccountInfo() (*AccountInfo, error) {
 		return nil, fmt.Errorf("binance HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	var info AccountInfo
-	if err := json.Unmarshal(body, &info); err != nil {
+	// Binance returns free/locked as JSON strings, not numbers — parse with raw struct
+	var raw struct {
+		Balances []struct {
+			Asset  string `json:"asset"`
+			Free   string `json:"free"`
+			Locked string `json:"locked"`
+		} `json:"balances"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, err
 	}
-	return &info, nil
+
+	info := &AccountInfo{}
+	for _, b := range raw.Balances {
+		free, _ := strconv.ParseFloat(b.Free, 64)
+		locked, _ := strconv.ParseFloat(b.Locked, 64)
+		info.Balances = append(info.Balances, Balance{
+			Asset:  b.Asset,
+			Free:   free,
+			Locked: locked,
+		})
+	}
+	return info, nil
 }
 
 func (c *Client) PlaceMarketOrder(symbol, side string, quantity float64) (*OrderResult, error) {
