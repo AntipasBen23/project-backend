@@ -44,24 +44,18 @@ func (s *RSIMAStrategy) Compute(candles []exchange.Candle) (signal Signal, indic
 	shortMA := computeSMA(closes, s.Config.ShortMA)
 	longMA := computeSMA(closes, s.Config.LongMA)
 
-	n := len(closes)
-	prevShortMA := computeSMAPrev(closes[:n-1], s.Config.ShortMA)
-	prevLongMA := computeSMAPrev(closes[:n-1], s.Config.LongMA)
-
 	indicators = map[string]float64{
 		"rsi":       rsi,
 		"shortMA":   shortMA,
 		"longMA":    longMA,
 	}
 
-	crossedAbove := prevShortMA <= prevLongMA && shortMA > longMA
-	crossedBelow := prevShortMA >= prevLongMA && shortMA < longMA
-
-	// Fire on MA crossover confirmed by RSI direction (not waiting for extreme levels)
-	if crossedAbove && rsi < 55 {
+	// BUY: MA9 above MA21 (uptrend) and RSI not yet overbought
+	if shortMA > longMA && rsi < 55 {
 		return SignalBuy, indicators
 	}
-	if crossedBelow && rsi > 45 {
+	// SELL: MA9 below MA21 (downtrend) and RSI not yet oversold
+	if shortMA < longMA && rsi > 45 {
 		return SignalSell, indicators
 	}
 	return SignalNone, indicators
