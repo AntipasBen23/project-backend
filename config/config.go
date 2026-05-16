@@ -34,7 +34,7 @@ func Get() *Config {
 			WsBaseURL:    "wss://testnet.binance.vision",
 			TradingPair:  "BTCUSDT",
 			Strategy:     "RSI_MA",
-			TradeSize:    0.001,
+			TradeSize:    0.0002,
 			StopLoss:     2.0,
 			TakeProfit:   3.0,
 			MaxDailyLoss: 5.0,
