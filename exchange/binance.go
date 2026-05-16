@@ -242,6 +242,10 @@ func (c *Client) PlaceMarketOrder(symbol, side string, quantity float64) (*Order
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
+	// Binance sometimes returns 200 OK with an error body {"code":-2010,"msg":"..."}
+	if result.OrderID == 0 {
+		return nil, fmt.Errorf("binance order rejected: %s", string(body))
+	}
 	return &result, nil
 }
 

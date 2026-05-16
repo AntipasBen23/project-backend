@@ -118,6 +118,7 @@ func (e *Engine) Stop() {
 		e.cancelFn()
 	}
 	e.state = StateStopped
+	e.openTrade = nil // clear so next Start begins fresh
 	e.mu.Unlock()
 	e.log("Bot stopped", "warn")
 }
