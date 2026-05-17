@@ -113,12 +113,22 @@ func (e *Engine) Start() error {
 }
 
 func (e *Engine) Stop() {
+	// Close any open trade at current market price before stopping
+	e.mu.RLock()
+	hasOpen := e.openTrade != nil
+	price := e.LastPrice
+	e.mu.RUnlock()
+
+	if hasOpen && price > 0 {
+		e.closeTrade("BOT_STOPPED", price)
+	}
+
 	e.mu.Lock()
 	if e.cancelFn != nil {
 		e.cancelFn()
 	}
 	e.state = StateStopped
-	e.openTrade = nil // clear so next Start begins fresh
+	e.openTrade = nil
 	e.mu.Unlock()
 	e.log("Bot stopped", "warn")
 }
