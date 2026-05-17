@@ -11,40 +11,44 @@ import (
 	"time"
 )
 
-type claudeRequest struct {
-	Model     string           `json:"model"`
-	MaxTokens int              `json:"max_tokens"`
-	Messages  []claudeMessage  `json:"messages"`
-	System    string           `json:"system"`
+type openAIRequest struct {
+	Model     string          `json:"model"`
+	MaxTokens int             `json:"max_tokens"`
+	Messages  []openAIMessage `json:"messages"`
 }
 
-type claudeMessage struct {
+type openAIMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type claudeResponse struct {
-	Content []struct {
-		Text string `json:"text"`
-	} `json:"content"`
+type openAIResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
 }
 
-var anthropicClient = &http.Client{Timeout: 30 * time.Second}
+var openAIClient = &http.Client{Timeout: 30 * time.Second}
 
-func callClaude(prompt string) (string, error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+func callOpenAI(prompt string) (string, error) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		return "", fmt.Errorf("ANTHROPIC_API_KEY not configured")
+		return "", fmt.Errorf("OPENAI_API_KEY not configured")
 	}
 
-	reqBody := claudeRequest{
-		Model:     "claude-haiku-4-5-20251001",
+	reqBody := openAIRequest{
+		Model:     "gpt-4o-mini",
 		MaxTokens: 350,
-		System:    "You are a professional cryptocurrency trading analyst. Provide concise, insightful technical analysis. Be direct, use specific price levels, and keep your response to 3-4 sentences.",
-		Messages: []claudeMessage{
+		Messages: []openAIMessage{
+			{
+				Role:    "system",
+				Content: "You are a professional cryptocurrency trading analyst. Provide concise, insightful technical analysis. Be direct, use specific price levels, and keep your response to 3-4 sentences.",
+			},
 			{Role: "user", Content: prompt},
 		},
 	}
@@ -54,15 +58,14 @@ func callClaude(prompt string) (string, error) {
 		return "", err
 	}
 
-	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("content-type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := anthropicClient.Do(req)
+	resp, err := openAIClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -73,17 +76,17 @@ func callClaude(prompt string) (string, error) {
 		return "", err
 	}
 
-	var cr claudeResponse
+	var cr openAIResponse
 	if err := json.Unmarshal(respBody, &cr); err != nil {
 		return "", err
 	}
 	if cr.Error != nil {
-		return "", fmt.Errorf("claude error: %s", cr.Error.Message)
+		return "", fmt.Errorf("openai error: %s", cr.Error.Message)
 	}
-	if len(cr.Content) == 0 {
-		return "", fmt.Errorf("empty response from claude")
+	if len(cr.Choices) == 0 {
+		return "", fmt.Errorf("empty response from openai")
 	}
-	return strings.TrimSpace(cr.Content[0].Text), nil
+	return strings.TrimSpace(cr.Choices[0].Message.Content), nil
 }
 
 func (s *Server) handleAIAnalysis(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +108,6 @@ func (s *Server) handleAIAnalysis(w http.ResponseWriter, r *http.Request) {
 	fastEMA := indicators["fastEMA"]
 	slowEMA := indicators["slowEMA"]
 
-	// Build indicator section based on active strategy
 	var indicatorLines strings.Builder
 	switch strategy {
 	case "BOLLINGER":
@@ -126,7 +128,6 @@ func (s *Server) handleAIAnalysis(w http.ResponseWriter, r *http.Request) {
 		indicatorLines.WriteString(fmt.Sprintf("- MA Alignment: %s\n", maAlign))
 	}
 
-	// Open position info
 	positionInfo := "None"
 	if openTrade != nil {
 		unrealised := (price - openTrade.EntryPrice) * openTrade.Quantity
@@ -159,7 +160,7 @@ Cover: current momentum signal, key price levels to watch, and position/trade ou
 		positionInfo,
 	)
 
-	analysis, err := callClaude(prompt)
+	analysis, err := callOpenAI(prompt)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusServiceUnavailable)
 		return
