@@ -249,9 +249,7 @@ func (e *Engine) tick() {
 	forced := e.forceBuyOnStart
 	if forced {
 		e.forceBuyOnStart = false
-		if signal == SignalNone {
-			signal = SignalBuy
-		}
+		signal = SignalBuy // always buy on start regardless of RSI
 	}
 	e.mu.Unlock()
 
