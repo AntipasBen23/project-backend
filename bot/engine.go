@@ -84,6 +84,8 @@ func (e *Engine) SetStrategy(name string) {
 		e.strategy = NewBollingerStrategy(DefaultBollingerConfig())
 	case "EMA":
 		e.strategy = NewEMAStrategy(DefaultEMAConfig())
+	case "BOLLINGER_RSI":
+		e.strategy = NewBollingerRSIStrategy(DefaultBollingerRSIConfig())
 	default:
 		e.strategy = NewRSIMAStrategy(DefaultRSIMAConfig())
 	}
@@ -162,6 +164,8 @@ func (e *Engine) SetStrategyLocked(name string) {
 		e.strategy = NewBollingerStrategy(DefaultBollingerConfig())
 	case "EMA":
 		e.strategy = NewEMAStrategy(DefaultEMAConfig())
+	case "BOLLINGER_RSI":
+		e.strategy = NewBollingerRSIStrategy(DefaultBollingerRSIConfig())
 	default:
 		e.strategy = NewRSIMAStrategy(DefaultRSIMAConfig())
 	}
