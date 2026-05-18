@@ -69,6 +69,26 @@ type Server struct {
 func NewServer(engine *bot.Engine, client *exchange.Client) *Server {
 	hub := newHub()
 	engine.BroadcastFn = hub.broadcast
+	engine.TradeReasonFn = func(prompt string) string {
+		result, err := callOpenAIMessages([]openAIMessage{
+			{Role: "system", Content: "You are a professional cryptocurrency trading analyst. Be concise and precise."},
+			{Role: "user", Content: prompt},
+		}, 150)
+		if err != nil {
+			return ""
+		}
+		return result
+	}
+	engine.TradePostMortemFn = func(prompt string) string {
+		result, err := callOpenAIMessages([]openAIMessage{
+			{Role: "system", Content: "You are a professional cryptocurrency trading analyst. Be concise and analytical."},
+			{Role: "user", Content: prompt},
+		}, 150)
+		if err != nil {
+			return ""
+		}
+		return result
+	}
 	backtester := backtest.New(client)
 	backtester.Progress = func(pct int, msg string) {
 		hub.broadcast("backtest_progress", map[string]interface{}{
@@ -100,6 +120,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/orders", cors(s.handleOrders))
 	mux.HandleFunc("/api/ai-analysis", cors(s.handleAIAnalysis))
 	mux.HandleFunc("/api/ai-chat", cors(s.handleAIChat))
+	mux.HandleFunc("/api/ai-brief", cors(s.handleAIBrief))
 	mux.Handle("/ws", websocket.Handler(s.handleWS))
 }
 
@@ -271,6 +292,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"stopLoss":     cfg.StopLoss,
 			"takeProfit":   cfg.TakeProfit,
 			"maxDailyLoss": cfg.MaxDailyLoss,
+			"maxPositions": cfg.MaxPositions,
+			"leverageCap":  cfg.LeverageCap,
 		})
 		return
 	}
@@ -284,13 +307,16 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			StopLoss     float64 `json:"stopLoss"`
 			TakeProfit   float64 `json:"takeProfit"`
 			MaxDailyLoss float64 `json:"maxDailyLoss"`
+			MaxPositions int     `json:"maxPositions"`
+			LeverageCap  float64 `json:"leverageCap"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, "invalid body", http.StatusBadRequest)
 			return
 		}
 		config.Update(body.APIKey, body.APISecret, body.TradingPair, body.Strategy,
-			body.TradeSize, body.StopLoss, body.TakeProfit, body.MaxDailyLoss)
+			body.TradeSize, body.StopLoss, body.TakeProfit, body.MaxDailyLoss,
+			body.MaxPositions, body.LeverageCap)
 		writeJSON(w, map[string]string{"status": "ok"})
 		return
 	}

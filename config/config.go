@@ -18,6 +18,8 @@ type Config struct {
 	StopLoss     float64
 	TakeProfit   float64
 	MaxDailyLoss float64
+	MaxPositions int
+	LeverageCap  float64
 }
 
 var (
@@ -38,12 +40,14 @@ func Get() *Config {
 			StopLoss:     2.0,
 			TakeProfit:   3.0,
 			MaxDailyLoss: 5.0,
+			MaxPositions: 1,
+			LeverageCap:  1.0,
 		}
 	})
 	return instance
 }
 
-func Update(key, secret, pair, strategy string, tradeSize, stopLoss, takeProfit, maxDailyLoss float64) {
+func Update(key, secret, pair, strategy string, tradeSize, stopLoss, takeProfit, maxDailyLoss float64, maxPositions int, leverageCap float64) {
 	cfg := Get()
 	if key != "" {
 		cfg.APIKey = key
@@ -68,6 +72,12 @@ func Update(key, secret, pair, strategy string, tradeSize, stopLoss, takeProfit,
 	}
 	if maxDailyLoss > 0 {
 		cfg.MaxDailyLoss = maxDailyLoss
+	}
+	if maxPositions > 0 {
+		cfg.MaxPositions = maxPositions
+	}
+	if leverageCap > 0 {
+		cfg.LeverageCap = leverageCap
 	}
 }
 

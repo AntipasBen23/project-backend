@@ -54,10 +54,12 @@ type Engine struct {
 	startTime       time.Time
 	cancelFn        context.CancelFunc
 	forceBuyOnStart bool
-	BroadcastFn     func(event string, data interface{})
-	LastCandles     []exchange.Candle
-	LastPrice       float64
-	Indicators      map[string]float64
+	BroadcastFn       func(event string, data interface{})
+	TradeReasonFn     func(prompt string) string
+	TradePostMortemFn func(prompt string) string
+	LastCandles       []exchange.Candle
+	LastPrice         float64
+	Indicators        map[string]float64
 }
 
 func NewEngine(client *exchange.Client) *Engine {
@@ -301,6 +303,28 @@ func (e *Engine) tick() {
 		if e.BroadcastFn != nil {
 			e.BroadcastFn("trade", trade)
 		}
+		// AI trade reasoning — non-blocking
+		if e.TradeReasonFn != nil {
+			rsi := indicators["rsi"]
+			shortMA := indicators["shortMA"]
+			longMA := indicators["longMA"]
+			trigger := "RSI/indicator signal"
+			if forced {
+				trigger = "bot activated (immediate entry)"
+			}
+			entryPrice := trade.EntryPrice
+			pair := cfg.TradingPair
+			stratName := strategy.Name()
+			go func() {
+				prompt := fmt.Sprintf(
+					"A trading bot just opened a LONG position on %s at $%.2f. Strategy: %s. RSI (14): %.1f. MA9: $%.2f, MA21: $%.2f. Entry trigger: %s. Write exactly 2 professional sentences explaining why the bot entered this position, referencing the specific indicator values. No bullet points.",
+					pair, entryPrice, stratName, rsi, shortMA, longMA, trigger,
+				)
+				if reasoning := e.TradeReasonFn(prompt); reasoning != "" {
+					e.log("🤖 "+reasoning, "buy")
+				}
+			}()
+		}
 
 	case SignalSell:
 		e.log("SELL signal fired — no open position to close", "sell")
@@ -352,6 +376,28 @@ func (e *Engine) closeTrade(reason string, price float64) {
 	if e.BroadcastFn != nil {
 		e.BroadcastFn("trade_closed", trade)
 		e.BroadcastFn("pnl", e.getPnLSnapshot())
+	}
+
+	// AI post-mortem — non-blocking
+	if e.TradePostMortemFn != nil {
+		entryPrice := trade.EntryPrice
+		exitPrice := trade.ExitPrice
+		pnl := trade.PnL
+		pair := trade.Pair
+		duration := time.Since(trade.Timestamp).Round(time.Second)
+		pct := 0.0
+		if entryPrice > 0 {
+			pct = (exitPrice - entryPrice) / entryPrice * 100
+		}
+		go func() {
+			prompt := fmt.Sprintf(
+				"A LONG trade on %s just closed. Entry: $%.2f, Exit: $%.2f, P&L: %+.4f (%+.2f%%), Duration: %s, Reason: %s. Write exactly 2 professional sentences analysing this outcome — what happened and what it indicates about market conditions. No bullet points.",
+				pair, entryPrice, exitPrice, pnl, pct, duration, reason,
+			)
+			if postMortem := e.TradePostMortemFn(prompt); postMortem != "" {
+				e.log("📋 "+postMortem, "info")
+			}
+		}()
 	}
 
 	if e.riskMgr.IsPaused() {
