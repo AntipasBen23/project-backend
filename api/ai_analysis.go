@@ -12,9 +12,10 @@ import (
 )
 
 type openAIRequest struct {
-	Model     string          `json:"model"`
-	MaxTokens int             `json:"max_tokens"`
-	Messages  []openAIMessage `json:"messages"`
+	Model          string            `json:"model"`
+	MaxTokens      int               `json:"max_tokens"`
+	Messages       []openAIMessage   `json:"messages"`
+	ResponseFormat map[string]string `json:"response_format,omitempty"`
 }
 
 type openAIMessage struct {
@@ -33,60 +34,79 @@ type openAIResponse struct {
 	} `json:"error"`
 }
 
+type aiResult struct {
+	Analysis       string `json:"analysis"`
+	Recommendation string `json:"recommendation"` // "favorable" | "not_favorable"
+	Reasoning      string `json:"reasoning"`
+}
+
 var openAIClient = &http.Client{Timeout: 30 * time.Second}
 
-func callOpenAI(prompt string) (string, error) {
+const systemPrompt = `You are a professional cryptocurrency trading analyst. Analyze the provided live market data and respond with a JSON object containing exactly these three fields:
+- "analysis": a 3-4 sentence professional technical analysis covering current momentum, key price levels to watch, and market context
+- "recommendation": either "favorable" or "not_favorable" based on whether conditions support entering a trade right now
+- "reasoning": one clear, professional sentence explaining the recommendation
+
+Return only the JSON object, no additional text.`
+
+func callOpenAI(prompt string) (aiResult, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		return "", fmt.Errorf("OPENAI_API_KEY not configured")
+		return aiResult{}, fmt.Errorf("OPENAI_API_KEY not configured")
 	}
 
 	reqBody := openAIRequest{
-		Model:     "gpt-4o-mini",
-		MaxTokens: 350,
+		Model:          "gpt-4o-mini",
+		MaxTokens:      500,
+		ResponseFormat: map[string]string{"type": "json_object"},
 		Messages: []openAIMessage{
-			{
-				Role:    "system",
-				Content: "You are a professional cryptocurrency trading analyst. Provide concise, insightful technical analysis. Be direct, use specific price levels, and keep your response to 3-4 sentences.",
-			},
+			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: prompt},
 		},
 	}
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", err
+		return aiResult{}, err
 	}
 
 	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return aiResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := openAIClient.Do(req)
 	if err != nil {
-		return "", err
+		return aiResult{}, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return aiResult{}, err
 	}
 
 	var cr openAIResponse
 	if err := json.Unmarshal(respBody, &cr); err != nil {
-		return "", err
+		return aiResult{}, err
 	}
 	if cr.Error != nil {
-		return "", fmt.Errorf("openai error: %s", cr.Error.Message)
+		return aiResult{}, fmt.Errorf("openai error: %s", cr.Error.Message)
 	}
 	if len(cr.Choices) == 0 {
-		return "", fmt.Errorf("empty response from openai")
+		return aiResult{}, fmt.Errorf("empty response from openai")
 	}
-	return strings.TrimSpace(cr.Choices[0].Message.Content), nil
+
+	var result aiResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(cr.Choices[0].Message.Content)), &result); err != nil {
+		return aiResult{}, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+	if result.Recommendation != "favorable" && result.Recommendation != "not_favorable" {
+		result.Recommendation = "not_favorable"
+	}
+	return result, nil
 }
 
 func (s *Server) handleAIAnalysis(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +163,7 @@ func (s *Server) handleAIAnalysis(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prompt := fmt.Sprintf(
-		`Analyze this live crypto market data and give a professional 3-4 sentence technical analysis:
+		`Analyze this live crypto market data:
 
 Symbol: %s
 Current Price: $%.2f
@@ -154,23 +174,25 @@ Technical Indicators:
 %s
 Open Position: %s
 
-Cover: current momentum signal, key price levels to watch, and position/trade outlook.`,
+Provide your analysis and a clear recommendation on whether conditions are currently favourable or unfavourable for entering a trade.`,
 		symbol, price, state, strategy,
 		indicatorLines.String(),
 		positionInfo,
 	)
 
-	analysis, err := callOpenAI(prompt)
+	result, err := callOpenAI(prompt)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
 	writeJSON(w, map[string]interface{}{
-		"analysis":  analysis,
-		"price":     price,
-		"symbol":    symbol,
-		"strategy":  strategy,
-		"timestamp": time.Now(),
+		"analysis":       result.Analysis,
+		"recommendation": result.Recommendation,
+		"reasoning":      result.Reasoning,
+		"price":          price,
+		"symbol":         symbol,
+		"strategy":       strategy,
+		"timestamp":      time.Now(),
 	})
 }
