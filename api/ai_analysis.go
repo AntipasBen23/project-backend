@@ -42,7 +42,7 @@ type aiResult struct {
 
 var openAIClient = &http.Client{Timeout: 30 * time.Second}
 
-const systemPrompt = `You are a professional cryptocurrency trading analyst. Analyze the provided live market data and respond with a JSON object containing exactly these three fields:
+const analysisSystemPrompt = `You are a professional cryptocurrency trading analyst. Analyze the provided live market data and respond with a JSON object containing exactly these three fields:
 - "analysis": a 3-4 sentence professional technical analysis covering current momentum, key price levels to watch, and market context
 - "recommendation": either "favorable" or "not_favorable" based on whether conditions support entering a trade right now
 - "reasoning": one clear, professional sentence explaining the recommendation
@@ -60,7 +60,7 @@ func callOpenAI(prompt string) (aiResult, error) {
 		MaxTokens:      500,
 		ResponseFormat: map[string]string{"type": "json_object"},
 		Messages: []openAIMessage{
-			{Role: "system", Content: systemPrompt},
+			{Role: "system", Content: analysisSystemPrompt},
 			{Role: "user", Content: prompt},
 		},
 	}

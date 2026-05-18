@@ -99,6 +99,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/candles", cors(s.handleCandles))
 	mux.HandleFunc("/api/orders", cors(s.handleOrders))
 	mux.HandleFunc("/api/ai-analysis", cors(s.handleAIAnalysis))
+	mux.HandleFunc("/api/ai-chat", cors(s.handleAIChat))
 	mux.Handle("/ws", websocket.Handler(s.handleWS))
 }
 
