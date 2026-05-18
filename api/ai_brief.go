@@ -7,6 +7,10 @@ import (
 )
 
 func (s *Server) handleAIBrief(w http.ResponseWriter, r *http.Request) {
+	if s.engine.LastPrice == 0 {
+		s.engine.EnsureLiveContext()
+	}
+
 	cfg := s.engine.GetStatus()
 	price := s.engine.LastPrice
 	indicators := s.engine.Indicators

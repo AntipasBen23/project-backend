@@ -484,6 +484,31 @@ func (e *Engine) GetLastCandles() []exchange.Candle {
 	return e.LastCandles
 }
 
+// EnsureLiveContext fetches live price and indicators from the exchange even
+// when the bot is stopped. Safe to call from any goroutine.
+func (e *Engine) EnsureLiveContext() {
+	cfg := config.Get()
+
+	candles, err := e.client.GetCandles(cfg.TradingPair, "1m", 100)
+	if err != nil || len(candles) == 0 {
+		return
+	}
+	price := candles[len(candles)-1].Close
+
+	e.mu.Lock()
+	e.LastPrice = price
+	e.LastCandles = candles
+	strat := e.strategy
+	e.mu.Unlock()
+
+	if strat != nil {
+		_, indicators := strat.Compute(candles)
+		e.mu.Lock()
+		e.Indicators = indicators
+		e.mu.Unlock()
+	}
+}
+
 func (e *Engine) getPnLSnapshot() map[string]interface{} {
 	total := e.winCount + e.lossCount
 	winRate := 0.0

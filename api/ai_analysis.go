@@ -110,6 +110,10 @@ func callOpenAI(prompt string) (aiResult, error) {
 }
 
 func (s *Server) handleAIAnalysis(w http.ResponseWriter, r *http.Request) {
+	if s.engine.LastPrice == 0 {
+		s.engine.EnsureLiveContext()
+	}
+
 	cfg := s.engine.GetStatus()
 	price := s.engine.LastPrice
 	indicators := s.engine.Indicators
